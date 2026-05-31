@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: otp-postgres
+    environment:
+      POSTGRES_DB: otp_db
+      POSTGRES_USER: otp_user
+      POSTGRES_PASSWORD: otp_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U otp_user -d otp_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: otp-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  smppsim:
+    image: eagafonov/smppsim
+    container_name: otp-smppsim
+    ports:
+      - "2775:2775"
+      - "8088:88"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: otp-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+      smppsim:
+        condition: service_started
+    environment:
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/otp_db
+      SPRING_DATASOURCE_USERNAME: otp_user
+      SPRING_DATASOURCE_PASSWORD: otp_password
+      SPRING_MAIL_HOST: mailhog
+      SPRING_MAIL_PORT: 1025
+      SPRING_MAIL_SMTP_AUTH: false
+      SPRING_MAIL_SMTP_STARTTLS: false
+      APP_MAIL_FROM: no-reply@otp.local
+      APP_JWT_SECRET: change-me-change-me-change-me-change-me
+      APP_JWT_TTL_SECONDS: 3600
+      APP_OTP_EXPIRE_CHECK_INTERVAL_MS: 30000
+      APP_FILE_PATH: /app/otp-codes.log
+      APP_SMPP_HOST: smppsim
+      APP_SMPP_PORT: 2775
+      APP_SMPP_SYSTEM_ID: smppclient1
+      APP_SMPP_PASSWORD: password
+      APP_SMPP_SYSTEM_TYPE: OTP
+      APP_SMPP_SOURCE_ADDR: OTPService
+      APP_TELEGRAM_BASE_URL: https://api.telegram.org
+      APP_TELEGRAM_BOT_TOKEN: ${APP_TELEGRAM_BOT_TOKEN:-}
+      APP_TELEGRAM_DEFAULT_CHAT_ID: ${APP_TELEGRAM_DEFAULT_CHAT_ID:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./otp-codes.log:/app/otp-codes.log
+
+volumes:
+  postgres_data:
